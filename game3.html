@@ -162,13 +162,15 @@
         .sudoku-grid {
             display: grid;
             grid-template-columns: repeat(9, 1fr);
-            /* 使用 gap 來創建細線條 */
+            /* --- 修正重點：明確定義列高為 1fr，確保空行高度一致 --- */
+            grid-template-rows: repeat(9, 1fr);
+            /* ---------------------------------------------- */
             gap: 1px;
             background-color: #ccc; /* 細線條顏色 */
             border: 3px solid #333; /* 外框粗線 */
             width: 100%;
             max-width: 450px;
-            aspect-ratio: 1; /* 保持正方形 */
+            aspect-ratio: 1; /* 保持整個網格為正方形 */
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         
@@ -183,6 +185,9 @@
             user-select: none;
             transition: background-color 0.1s;
             position: relative;
+            /* 確保格子填滿網格區域 */
+            width: 100%;
+            height: 100%;
         }
         
         /* 3x3 宮格粗線條 (CSS Grid Hack) */
@@ -533,10 +538,6 @@
 
         // 簡單的檢查當前填入是否違反規則（僅視覺檢查）
         function isValidCheck(r, c, num) {
-            // 這裡我們檢查當前 board 是否有衝突
-            // 注意：這裡不使用 solution，而是檢查遊戲規則
-            // 但為了簡單，我們通常對照 solution 來決定是否紅字，或者檢查行列衝突
-            
             // 檢查當前格子在盤面上是否有重複
             for(let i=0; i<9; i++) {
                 if(i!==c && STATE.board[r][i]===num) return false;
