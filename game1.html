@@ -243,6 +243,43 @@
             margin-bottom: 25px;
         }
 
+        /* Accessibility Styles */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+            .sudoku-cell { border-width: 2px; }
+            .btn { border-width: 3px; font-weight: 700; }
+        }
+
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Focus visible for keyboard navigation */
+        button:focus-visible, 
+        .btn:focus-visible,
+        .d-pad-btn:focus-visible,
+        #gameCanvas:focus-visible {
+            outline: 3px solid #FFD700;
+            outline-offset: 2px;
+        }
+
         /* Responsive Queries */
         @media (max-width: 650px) {
             h1 { font-size: 1.8rem; }
@@ -266,36 +303,43 @@
         <p>自由穿越邊界 · 挑戰高分</p>
     </div>
     
-    <div class="game-info">
-        <div class="info-item">分數: <span id="score" class="score-val">0</span></div>
-        <div class="info-item">最高分: <span id="highScore" class="high-score-val">0</span></div>
-        <div class="info-item">速度: <span id="speed" class="speed-val">正常</span></div>
+    <!-- Accessibility: Game Status Announcer -->
+    <div id="gameAnnouncer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    
+    <div class="game-info" role="status" aria-label="遊戲資訊">
+        <div class="info-item">分數: <span id="score" class="score-val" aria-label="目前分數">0</span></div>
+        <div class="info-item">最高分: <span id="highScore" class="high-score-val" aria-label="最高分數">0</span></div>
+        <div class="info-item">速度: <span id="speed" class="speed-val" aria-label="遊戲速度">正常</span></div>
     </div>
     
-    <div class="game-container">
-        <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div class="game-container" role="application" aria-label="貪食蛇遊戲區域">
+        <canvas id="gameCanvas" width="600" height="400" 
+                tabindex="0" 
+                role="img" 
+                aria-label="遊戲畫布 - 使用方向鍵或 W A S D 控制蛇的移動">
+        </canvas>
         
-        <div id="gameOver" class="game-over">
-            <h2>遊戲結束</h2>
+        <div id="gameOver" class="game-over" role="dialog" aria-labelledby="gameOverTitle" aria-hidden="true">
+            <h2 id="gameOverTitle">遊戲結束</h2>
             <p>最終分數: <span id="finalScore">0</span></p>
-            <button id="restartBtn" class="btn btn-start">再玩一次</button>
+            <button id="restartBtn" class="btn btn-start" aria-label="重新開始遊戲">再玩一次</button>
         </div>
     </div>
     
     <!-- Desktop Controls -->
-    <div class="controls">
-        <button id="startBtn" class="btn btn-start">開始遊戲</button>
-        <button id="pauseBtn" class="btn btn-pause">暫停遊戲</button>
-        <button id="resetBtn" class="btn btn-reset">重置遊戲</button>
-        <a href="index.html" class="btn btn-home">返回主頁</a>
+    <div class="controls" role="toolbar" aria-label="遊戲控制">
+        <button id="startBtn" class="btn btn-start" aria-label="開始新遊戲，按空白鍵也可以開始">開始遊戲</button>
+        <button id="pauseBtn" class="btn btn-pause" aria-label="暫停或繼續遊戲，按空白鍵也可以暫停">暫停遊戲</button>
+        <button id="resetBtn" class="btn btn-reset" aria-label="重置當前遊戲">重置遊戲</button>
+        <a href="index.html" class="btn btn-home" aria-label="返回遊戲主頁">返回主頁</a>
     </div>
     
     <!-- Mobile D-Pad -->
-    <div class="mobile-controls">
-        <button class="d-pad-btn up" data-dir="up">▲</button>
-        <button class="d-pad-btn left" data-dir="left">◀</button>
-        <button class="d-pad-btn down" data-dir="down">▼</button>
-        <button class="d-pad-btn right" data-dir="right">▶</button>
+    <div class="mobile-controls" role="toolbar" aria-label="移動控制器">
+        <button class="d-pad-btn up" data-dir="up" aria-label="向上移動">▲</button>
+        <button class="d-pad-btn left" data-dir="left" aria-label="向左移動">◀</button>
+        <button class="d-pad-btn down" data-dir="down" aria-label="向下移動">▼</button>
+        <button class="d-pad-btn right" data-dir="right" aria-label="向右移動">▶</button>
     </div>
     
     <div class="instructions">
@@ -725,8 +769,60 @@
         }
         window.addEventListener('resize', resizeCanvas);
         
+        // --- 無障礙功能擴展 ---
+        const announcer = document.getElementById('gameAnnouncer');
+        
+        // 宣告遊戲狀態給螢幕閱讀器
+        function announce(message) {
+            announcer.textContent = message;
+        }
+
+        // 更新原有函數以包含無障礙功能
+        const originalGameOver = gameOver;
+        gameOver = function() {
+            originalGameOver();
+            announce(`遊戲結束！最終分數：${score}分`);
+            document.getElementById('gameOver').setAttribute('aria-hidden', 'false');
+            document.getElementById('restartBtn').focus();
+        };
+
+        const originalStartGame = startGame;
+        startGame = function() {
+            originalStartGame();
+            announce('遊戲開始！使用方向鍵控制蛇的移動');
+            document.getElementById('gameOver').setAttribute('aria-hidden', 'true');
+        };
+
+        const originalUpdateScoreUI = updateScoreUI;
+        updateScoreUI = function() {
+            originalUpdateScoreUI();
+            if (score > 0 && score % 50 === 0) {
+                announce(`分數：${score}分，速度提升！`);
+            }
+        };
+
+        const originalTogglePause = togglePause;
+        togglePause = function() {
+            originalTogglePause();
+            announce(isPaused ? '遊戲已暫停' : '遊戲繼續');
+        };
+
+        // 鍵盤焦點管理
+        document.getElementById('gameCanvas').addEventListener('focus', () => {
+            announce('畫布已獲得焦點，使用方向鍵控制蛇的移動');
+        });
+
+        // 按鈕鍵盤導航支援
+        document.getElementById('startBtn').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                startGame();
+            }
+        });
+
         // 初始繪製
         initGame();
+        announce('歡迎來到無限穿牆貪食蛇遊戲！按開始遊戲按鈕開始');
 
     </script>
 </body>

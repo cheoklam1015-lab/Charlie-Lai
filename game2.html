@@ -146,6 +146,13 @@
             margin-bottom: 30px;
         }
         
+        .input-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+        }
+        
         .number-input {
             width: 60px;
             height: 75px;
@@ -158,6 +165,42 @@
             font-weight: bold;
             transition: all 0.3s ease;
             box-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+            /* 移動端改進 */
+            -webkit-appearance: none;
+            -moz-appearance: textfield;
+            touch-action: manipulation;
+        }
+        
+        /* 移動端專用樣式 */
+        @media (pointer: coarse) {
+            .number-input {
+                width: 70px;
+                height: 85px;
+                font-size: 2.5rem;
+                padding: 8px;
+                /* 增大觸控目標 */
+                min-height: 44px;
+                min-width: 44px;
+            }
+            
+            .input-container {
+                gap: 15px;
+                margin-bottom: 35px;
+            }
+            
+            .btn {
+                padding: 18px;
+                font-size: 1.2rem;
+                min-height: 48px; /* 滿足最小觸控目標要求 */
+            }
+        }
+        
+        /* 數字鍵盤提示 */
+        .input-hint {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 5px;
+            text-align: center;
         }
         
         .number-input:focus {
@@ -417,10 +460,62 @@
                 <div class="panel-header"><i class="fas fa-gamepad"></i> 輸入您的猜測</div>
                 
                 <div class="input-container">
-                    <input type="number" min="0" max="9" class="number-input" id="digit1" maxlength="1" placeholder="?">
-                    <input type="number" min="0" max="9" class="number-input" id="digit2" maxlength="1" placeholder="?">
-                    <input type="number" min="0" max="9" class="number-input" id="digit3" maxlength="1" placeholder="?">
-                    <input type="number" min="0" max="9" class="number-input" id="digit4" maxlength="1" placeholder="?">
+                    <div class="input-wrapper">
+                        <input type="number" 
+                               min="0" 
+                               max="9" 
+                               class="number-input" 
+                               id="digit1" 
+                               maxlength="1" 
+                               placeholder="?"
+                               inputmode="numeric"
+                               pattern="[0-9]"
+                               autocomplete="off"
+                               aria-label="第一個數字">
+                        <div class="input-hint">第1位</div>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="number" 
+                               min="0" 
+                               max="9" 
+                               class="number-input" 
+                               id="digit2" 
+                               maxlength="1" 
+                               placeholder="?"
+                               inputmode="numeric"
+                               pattern="[0-9]"
+                               autocomplete="off"
+                               aria-label="第二個數字">
+                        <div class="input-hint">第2位</div>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="number" 
+                               min="0" 
+                               max="9" 
+                               class="number-input" 
+                               id="digit3" 
+                               maxlength="1" 
+                               placeholder="?"
+                               inputmode="numeric"
+                               pattern="[0-9]"
+                               autocomplete="off"
+                               aria-label="第三個數字">
+                        <div class="input-hint">第3位</div>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="number" 
+                               min="0" 
+                               max="9" 
+                               class="number-input" 
+                               id="digit4" 
+                               maxlength="1" 
+                               placeholder="?"
+                               inputmode="numeric"
+                               pattern="[0-9]"
+                               autocomplete="off"
+                               aria-label="第四個數字">
+                        <div class="input-hint">第4位</div>
+                    </div>
                 </div>
                 
                 <div class="button-group">
@@ -552,7 +647,13 @@
             });
             
             if (!isValid) {
-                digitInputs[0].focus(); // 聚焦到第一個空位或最後一位
+                // 移動端改進：聚焦第一個空位
+                const firstEmpty = Array.from(digitInputs).find(input => input.value === '');
+                if (firstEmpty) {
+                    firstEmpty.focus();
+                } else {
+                    digitInputs[0].focus();
+                }
                 return;
             }
             
@@ -637,10 +738,13 @@
         // --- 輸入框邏輯 ---
         digitInputs.forEach((input, idx) => {
             input.addEventListener('input', (e) => {
+                // 限制只能輸入一個數字
+                e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 1);
+                
+                // 自動跳到下一個輸入框
                 if (e.target.value.length === 1 && idx < 3) {
                     digitInputs[idx + 1].focus();
                 }
-                e.target.value = e.target.value.slice(0, 1);
             });
             
             input.addEventListener('keydown', (e) => {
@@ -650,8 +754,44 @@
                 if (e.key === 'ArrowRight' && idx < 3) digitInputs[idx + 1].focus();
             });
             
-            input.addEventListener('focus', function() { this.select(); });
+            input.addEventListener('focus', function() { 
+                this.select();
+                // 移動端視覺反饋
+                if ('ontouchstart' in window) {
+                    this.style.transform = 'scale(1.05)';
+                    setTimeout(() => {
+                        this.style.transform = 'scale(1)';
+                    }, 200);
+                }
+            });
+            
+            // 移動端觸控優化
+            input.addEventListener('touchstart', function(e) {
+                this.style.transform = 'scale(0.95)';
+            }, {passive: true});
+            
+            input.addEventListener('touchend', function(e) {
+                this.style.transform = 'scale(1)';
+            }, {passive: true});
         });
+        
+        // 移動端虛擬鍵盤檢測
+        function detectVirtualKeyboard() {
+            const viewport = window.visualViewport;
+            if (viewport) {
+                const initialHeight = window.innerHeight;
+                viewport.addEventListener('resize', () => {
+                    const currentHeight = viewport.height;
+                    if (currentHeight < initialHeight * 0.8) {
+                        // 虛擬鍵盤打開時的調整
+                        document.querySelector('.control-panel').scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center' 
+                        });
+                    }
+                });
+            }
+        }
         
         // --- 五彩紙屑效果 ---
         function fireConfetti() {
@@ -681,7 +821,10 @@
         // --- 事件監聽 ---
         submitBtn.addEventListener('click', checkGuess);
         resetBtn.addEventListener('click', initGame);
-        window.addEventListener('DOMContentLoaded', initGame);
+        window.addEventListener('DOMContentLoaded', () => {
+            initGame();
+            detectVirtualKeyboard();
+        });
     </script>
 </body>
 </html>

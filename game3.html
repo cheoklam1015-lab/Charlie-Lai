@@ -150,7 +150,18 @@
         .btn-new { background-color: var(--success-color); }
         .btn-check { background-color: var(--accent-color); }
         .btn-hint { background-color: var(--warning-color); }
+        .btn-undo { background-color: #9b59b6; }
+        .btn-redo { background-color: #3498db; }
+        .btn-notes { background-color: #e67e22; }
+        .btn-save { background-color: #16a085; }
+        .btn-load { background-color: #27ae60; }
         .btn-home { background-color: #95a5a6; }
+        
+        .btn:disabled { 
+            opacity: 0.4; 
+            cursor: not-allowed; 
+            transform: none !important; 
+        }
         
         /* 數獨網格核心樣式 */
         .sudoku-container {
@@ -233,6 +244,28 @@
         
         .sudoku-cell.same-number {
             background-color: var(--cell-same);
+        }
+        
+        /* 筆記模式樣式 */
+        .sudoku-cell.notes-mode {
+            font-size: 0.7rem;
+            font-weight: normal;
+            color: #666;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            padding: 2px;
+        }
+        
+        .note-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+        }
+        
+        .notes-active {
+            box-shadow: inset 0 0 0 2px var(--warning-color);
         }
         
         /* 數字輸入面板 */
@@ -339,6 +372,11 @@
                 <button class="btn btn-new" id="newGameBtn"><i class="fas fa-redo"></i> 新遊戲</button>
                 <button class="btn btn-check" id="checkBtn"><i class="fas fa-check-circle"></i> 檢查</button>
                 <button class="btn btn-hint" id="hintBtn"><i class="fas fa-lightbulb"></i> 提示</button>
+                <button class="btn btn-undo" id="undoBtn" disabled><i class="fas fa-undo"></i> 復原</button>
+                <button class="btn btn-redo" id="redoBtn" disabled><i class="fas fa-redo"></i> 重做</button>
+                <button class="btn btn-notes" id="notesBtn"><i class="fas fa-pencil-alt"></i> 筆記</button>
+                <button class="btn btn-save" id="saveBtn"><i class="fas fa-save"></i> 存檔</button>
+                <button class="btn btn-load" id="loadBtn"><i class="fas fa-folder-open"></i> 讀檔</button>
                 <!-- 修正：使用正確的 a 標籤結構 -->
                 <a href="index.html" class="btn btn-home"><i class="fas fa-home"></i> 返回</a>
             </div>
@@ -375,16 +413,22 @@
     <script>
         // --- 遊戲狀態變數 ---
         const STATE = {
-            board: [],       // 當前盤面
-            solution: [],    // 完整答案
-            initial: [],     // 初始題目（不可變的）
-            selected: null,  // {r, c}
+            board: [],           // 當前盤面
+            solution: [],        // 完整答案
+            initial: [],          // 初始題目（不可變的）
+            selected: null,       // {r, c}
             timer: 0,
             timerId: null,
             difficulty: 'easy',
             errors: 0,
             hints: 0,
-            isActive: false
+            isActive: false,
+            // 進階功能狀態
+            history: [],          // 操作歷史記錄
+            historyIndex: -1,     // 目前歷史記錄索引
+            notesMode: false,     // 筆記模式
+            notes: [],           // 筆記資料 9x9x10 array
+            savedGames: []        // 儲存的遊戲
         };
 
         // --- DOM 元素 ---
@@ -396,7 +440,13 @@
             remaining: document.getElementById('remainingCells'),
             msgBox: document.getElementById('msgBox'),
             diffBtns: document.querySelectorAll('.difficulty-btn'),
-            numBtns: document.querySelectorAll('.num-btn')
+            numBtns: document.querySelectorAll('.num-btn'),
+            // 進階功能按鈕
+            undoBtn: document.getElementById('undoBtn'),
+            redoBtn: document.getElementById('redoBtn'),
+            notesBtn: document.getElementById('notesBtn'),
+            saveBtn: document.getElementById('saveBtn'),
+            loadBtn: document.getElementById('loadBtn')
         };
 
         // --- 核心邏輯：數獨生成 ---
@@ -466,10 +516,21 @@
             STATE.hints = 0;
             STATE.isActive = true;
             STATE.selected = null;
+            STATE.notesMode = false;
+            
+            // 初始化進階功能
+            STATE.history = [];
+            STATE.historyIndex = -1;
+            STATE.notes = Array(9).fill().map(() => Array(9).fill().map(() => []));
             
             generateSudoku(STATE.difficulty);
+            
+            // 保存初始狀態
+            saveToHistory();
+            
             updateTimer();
             updateStats();
+            updateUndoRedoButtons();
             renderGrid();
             showMessage('遊戲開始！填入數字 1-9', 'info');
             
@@ -520,18 +581,29 @@
                 return;
             }
 
-            STATE.board[r][c] = num;
+            if (STATE.notesMode && num !== 0) {
+                // 筆記模式：切換筆記
+                toggleNote(r, c, num);
+            } else {
+                // 正常模式：填入數字
+                STATE.board[r][c] = num;
+                // 清除該格子的筆記
+                STATE.notes[r][c] = [];
+                
+                saveToHistory(); // 保存到歷史記錄
+                
+                // 即時檢查錯誤 (僅當填入數字時)
+                if (num !== 0 && !isValidCheck(r, c, num)) {
+                    STATE.errors++;
+                    updateStats();
+                    const cell = document.querySelector(`.sudoku-cell[data-r="${r}"][data-c="${c}"]`);
+                    if(cell) cell.classList.add('error');
+                }
+            }
+            
             renderGrid(); // 重新渲染以更新顏色
             selectCell(r, c); // 保持選中狀態並更新高亮
             updateStats();
-
-            // 即時檢查錯誤 (僅當填入數字時)
-            if (num !== 0 && !isValidCheck(r, c, num)) {
-                STATE.errors++;
-                updateStats();
-                const cell = document.querySelector(`.sudoku-cell[data-r="${r}"][data-c="${c}"]`);
-                if(cell) cell.classList.add('error');
-            }
 
             checkWin();
         }
@@ -607,27 +679,189 @@
             UI.grid.style.animation = "pulse 0.5s 3";
         }
 
+        // --- 進階功能函數 ---
+        
+        // 歷史記錄管理
+        function saveToHistory() {
+            const state = {
+                board: JSON.parse(JSON.stringify(STATE.board)),
+                notes: JSON.parse(JSON.stringify(STATE.notes)),
+                errors: STATE.errors,
+                hints: STATE.hints
+            };
+            
+            // 移除目前索引之後的歷史記錄
+            STATE.history = STATE.history.slice(0, STATE.historyIndex + 1);
+            STATE.history.push(state);
+            STATE.historyIndex++;
+            
+            // 限制歷史記錄長度
+            if (STATE.history.length > 100) {
+                STATE.history.shift();
+                STATE.historyIndex--;
+            }
+            
+            updateUndoRedoButtons();
+        }
+
+        function undo() {
+            if (STATE.historyIndex > 0) {
+                STATE.historyIndex--;
+                restoreFromHistory();
+                showMessage('已復原', 'info');
+            }
+        }
+
+        function redo() {
+            if (STATE.historyIndex < STATE.history.length - 1) {
+                STATE.historyIndex++;
+                restoreFromHistory();
+                showMessage('已重做', 'info');
+            }
+        }
+
+        function restoreFromHistory() {
+            const state = STATE.history[STATE.historyIndex];
+            STATE.board = JSON.parse(JSON.stringify(state.board));
+            STATE.notes = JSON.parse(JSON.stringify(state.notes));
+            STATE.errors = state.errors;
+            STATE.hints = state.hints;
+            
+            updateStats();
+            updateUndoRedoButtons();
+            renderGrid();
+        }
+
+        function updateUndoRedoButtons() {
+            UI.undoBtn.disabled = STATE.historyIndex <= 0;
+            UI.redoBtn.disabled = STATE.historyIndex >= STATE.history.length - 1;
+        }
+
+        // 筆記系統
+        function toggleNotesMode() {
+            STATE.notesMode = !STATE.notesMode;
+            UI.notesBtn.classList.toggle('notes-active', STATE.notesMode);
+            renderGrid();
+            showMessage(STATE.notesMode ? '筆記模式開啟' : '筆記模式關閉', 'info');
+        }
+
+        function toggleNote(r, c, num) {
+            if (STATE.initial[r][c] !== 0) return;
+            
+            const noteIndex = STATE.notes[r][c].indexOf(num);
+            if (noteIndex > -1) {
+                STATE.notes[r][c].splice(noteIndex, 1);
+            } else {
+                STATE.notes[r][c].push(num);
+                STATE.notes[r][c].sort();
+            }
+            
+            renderCell(r, c);
+            saveToHistory();
+        }
+
+        // 存檔和讀檔
+        function saveGame() {
+            const gameData = {
+                board: STATE.board,
+                solution: STATE.solution,
+                initial: STATE.initial,
+                notes: STATE.notes,
+                timer: STATE.timer,
+                errors: STATE.errors,
+                hints: STATE.hints,
+                difficulty: STATE.difficulty,
+                savedAt: new Date().toISOString()
+            };
+            
+            // 保存到 localStorage
+            const saves = JSON.parse(localStorage.getItem('sudokuSaves') || '[]');
+            saves.push(gameData);
+            
+            // 最多保存 10 個遊戲
+            if (saves.length > 10) {
+                saves.shift();
+            }
+            
+            localStorage.setItem('sudokuSaves', JSON.stringify(saves));
+            showMessage('遊戲已儲存！', 'success');
+        }
+
+        function loadGame() {
+            const saves = JSON.parse(localStorage.getItem('sudokuSaves') || '[]');
+            if (saves.length === 0) {
+                showMessage('沒有儲存的遊戲', 'error');
+                return;
+            }
+            
+            // 載入最新的存檔
+            const gameData = saves[saves.length - 1];
+            
+            STATE.board = gameData.board;
+            STATE.solution = gameData.solution;
+            STATE.initial = gameData.initial;
+            STATE.notes = gameData.notes;
+            STATE.timer = gameData.timer;
+            STATE.errors = gameData.errors;
+            STATE.hints = gameData.hints;
+            STATE.difficulty = gameData.difficulty;
+            STATE.isActive = true;
+            
+            // 更新 UI
+            updateTimer();
+            updateStats();
+            updateDifficultyButtons();
+            renderGrid();
+            showMessage(`已載入遊戲 (儲存於 ${new Date(gameData.savedAt).toLocaleString()})`, 'success');
+        }
+
+        function updateDifficultyButtons() {
+            UI.diffBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.diff === STATE.difficulty);
+            });
+        }
+
         // --- 輔助函數 ---
         function renderGrid() {
             UI.grid.innerHTML = '';
             for(let r=0; r<9; r++){
                 for(let c=0; c<9; c++){
-                    const cell = document.createElement('div');
-                    cell.className = 'sudoku-cell';
-                    cell.dataset.r = r;
-                    cell.dataset.c = c;
-                    
-                    const val = STATE.board[r][c];
-                    if(val !== 0) {
-                        cell.textContent = val;
-                        if(STATE.initial[r][c] !== 0) cell.classList.add('default');
-                        else cell.classList.add('user');
-                    }
-                    
-                    cell.addEventListener('click', () => selectCell(r, c));
+                    const cell = renderCell(r, c);
                     UI.grid.appendChild(cell);
                 }
             }
+        }
+
+        function renderCell(r, c) {
+            const cell = document.createElement('div');
+            cell.className = 'sudoku-cell';
+            cell.dataset.r = r;
+            cell.dataset.c = c;
+            
+            const val = STATE.board[r][c];
+            const notes = STATE.notes[r][c];
+            
+            if (STATE.notesMode && notes.length > 0 && val === 0) {
+                // 筆記模式顯示
+                cell.classList.add('notes-mode');
+                cell.innerHTML = '';
+                for (let i = 1; i <= 9; i++) {
+                    const note = document.createElement('div');
+                    note.className = 'note-number';
+                    if (notes.includes(i)) {
+                        note.textContent = i;
+                    }
+                    cell.appendChild(note);
+                }
+            } else if (val !== 0) {
+                // 正常數字顯示
+                cell.textContent = val;
+                if(STATE.initial[r][c] !== 0) cell.classList.add('default');
+                else cell.classList.add('user');
+            }
+            
+            cell.addEventListener('click', () => selectCell(r, c));
+            return cell;
         }
 
         function isSameBox(r1, c1, r2, c2) {
@@ -664,6 +898,13 @@
         document.getElementById('hintBtn').addEventListener('click', giveHint);
         document.getElementById('clearBtn').addEventListener('click', () => fillNumber(0));
         
+        // 進階功能按鈕
+        UI.undoBtn.addEventListener('click', undo);
+        UI.redoBtn.addEventListener('click', redo);
+        UI.notesBtn.addEventListener('click', toggleNotesMode);
+        UI.saveBtn.addEventListener('click', saveGame);
+        UI.loadBtn.addEventListener('click', loadGame);
+        
         UI.diffBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 UI.diffBtns.forEach(b => b.classList.remove('active'));
@@ -683,6 +924,41 @@
         // 鍵盤操作
         document.addEventListener('keydown', (e) => {
             if(!STATE.isActive) return;
+            
+            // Ctrl/Cmd + Z 復原
+            if((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+                return;
+            }
+            
+            // Ctrl/Cmd + Shift + Z 或 Ctrl/Cmd + Y 重做
+            if(((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') || 
+               ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
+                e.preventDefault();
+                redo();
+                return;
+            }
+            
+            // Ctrl/Cmd + S 存檔
+            if((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveGame();
+                return;
+            }
+            
+            // Ctrl/Cmd + O 讀檔
+            if((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                loadGame();
+                return;
+            }
+            
+            // N 鍵切換筆記模式
+            if(e.key === 'n' || e.key === 'N') {
+                toggleNotesMode();
+                return;
+            }
             
             // 數字鍵
             if(e.key >= '1' && e.key <= '9') fillNumber(parseInt(e.key));
